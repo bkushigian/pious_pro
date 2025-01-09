@@ -79,6 +79,7 @@ class NodeMutator:
             nmd = NodeMutationData(
                 self.cfr_file,
                 node.node_id,
+                node.board,
                 actions,
                 hero_evs,
                 villain_evs,
@@ -245,6 +246,7 @@ class NodeMutationData:
         self,
         cfr_file,
         node_id,
+        board,
         actions,
         hero_evs,
         villain_evs,
@@ -257,6 +259,7 @@ class NodeMutationData:
         self.node_id = node_id
 
         # SPOT DATA
+        self.board = board
         self.actions = actions
         self.hero_evs = hero_evs
         self.villain_evs = villain_evs

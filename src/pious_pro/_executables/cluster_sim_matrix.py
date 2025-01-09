@@ -92,6 +92,7 @@ class ClusterSimMatrixCliSubcommand(CliSubcommand):
 
         N = len(sim_matrix)
         clusters = [[i] for i in range(N)]
+        n_clusters = len(clusters)
         target_threshold = args.threshold
         threshold = 0.99
         while threshold >= target_threshold:
@@ -101,24 +102,25 @@ class ClusterSimMatrixCliSubcommand(CliSubcommand):
             )
             while n_combinations > 0:
                 # Do it again
-                print("COMBINING AGAIN")
                 n_combinations = self.combine_clusters_for_threshold(
                     deltas, sim_matrix, clusters, threshold
                 )
-            print(
-                f"\n\n\n === CLUSTERS AFTER COMBINING FOR THRESHOLD {threshold: 5.3f} === \n\n\n"
-            )
-            print_clusters(deltas, clusters, width=20)
+
+            if len(clusters) < n_clusters:
+                n_clusters = len(clusters)
+                print(
+                    f"\n   === \033[1;34m{n_clusters}\033[0m CLUSTERS AFTER COMBINING FOR THRESHOLD {threshold: 5.3f} === \n"
+                )
+                print_clusters(deltas, clusters, width=10)
             threshold -= 0.01
 
 
 def print_clusters(deltas, clusters, width=10):
-    print(len(clusters), "CLUSTERS")
     for i, clust in enumerate(clusters):
         hand_ids = [deltas[x][0] for x in clust]
         hand_strs = [PIO_HAND_ORDER[x] for x in hand_ids]
         print()
-        print(f"CLUSTER #{i}")
+        print(f"[\033[34mCLUSTER #{i}\033[0m]")
         for i in range(0, len(hand_strs), width):
             print(
                 "    ",
