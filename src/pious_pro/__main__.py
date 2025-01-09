@@ -2,6 +2,9 @@ from argparse import ArgumentParser, _SubParsersAction
 from ._executables.version import VersionCliSubcommand
 from ._executables.conf import ConfCliSubcommand
 from ._executables.aggregate import AggregateCliSubcommand
+from ._executables.mutate import MutateCliSubcommand
+from ._executables.visualize_mutate import VisualizeMutateCliSubcommand
+from ._executables.cluster_sim_matrix import ClusterSimMatrixCliSubcommand
 
 
 def main():
@@ -14,6 +17,9 @@ def main():
     VersionCliSubcommand(sp)
     ConfCliSubcommand(sp)
     AggregateCliSubcommand(sp)
+    MutateCliSubcommand(sp)
+    VisualizeMutateCliSubcommand(sp)
+    ClusterSimMatrixCliSubcommand(sp)
 
     args = parser.parse_args()
     if "function" in args:
