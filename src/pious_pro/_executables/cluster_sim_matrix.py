@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pious.util import PIO_HAND_ORDER
 from pious.util import color_card
+from ..mutate import NodeMutationData
 
 
 def color_cards(cards):
@@ -20,15 +21,15 @@ class ClusterSimMatrixCliSubcommand(CliSubcommand):
             "Cluster hand similarity data from the mutate command",
         )
         p = self.parser
-        p.add_argument("deltas", help="the stored deltas")
-        p.add_argument("sim_matrix", help="sim matrix to load")
+        p.add_argument("node_mutation_data", help="The pickled NodeMutationData")
         p.add_argument(
-            "--save",
-            action="store_true",
-            help="Store visualizations to disk",
+            "action",
+            nargs="?",
+            default=None,
+            help="Action to inspect (defaults to first aggressive action)",
         )
         p.add_argument(
-            "--threshold", default=0.9, type=float, help="threshold for similarity"
+            "--threshold", default=0.7, type=float, help="threshold for similarity"
         )
 
     def can_combine_clusters(self, sim_matrix, ci, cj, threshold=0.9):
@@ -57,8 +58,8 @@ class ClusterSimMatrixCliSubcommand(CliSubcommand):
                 if self.can_combine_clusters(sim_matrix, ci, cj, threshold=threshold):
                     n_combinations += 1
                     # print(f"Combining clusters {i}{ci} and {j}{cj}")
-                    hands_in_ci = [PIO_HAND_ORDER[deltas[x][0]] for x in ci]
-                    hands_in_cj = [PIO_HAND_ORDER[deltas[x][0]] for x in cj]
+                    # hands_in_ci = [PIO_HAND_ORDER[deltas[x][0]] for x in ci]
+                    # hands_in_cj = [PIO_HAND_ORDER[deltas[x][0]] for x in cj]
                     # print(f"  {hands_in_ci}")
                     # print(f"  {hands_in_cj}")
 
@@ -70,10 +71,24 @@ class ClusterSimMatrixCliSubcommand(CliSubcommand):
         return n_combinations
 
     def run(self, args) -> int:
-        with open(args.deltas, "rb") as f:
-            deltas = pickle.load(f)
-        with open(args.sim_matrix, "rb") as f:
-            sim_matrix = pickle.load(f)
+        with open(args.node_mutation_data, "rb") as f:
+            nmd: NodeMutationData = pickle.load(f)
+        action = args.action
+        if action is None:
+            for a in nmd.actions:
+                if a.startswith("b"):
+                    action = a
+                    break
+            if action is None:
+                if "c" in nmd.actions:
+                    action = "c"
+                elif "f" in nmd.actions:
+                    action = "f"
+                else:
+                    raise RuntimeError("Illegal action set")
+
+        action_idx = nmd.actions.index(action)
+        _, deltas, sim_matrix = nmd.child_matchup_data[action_idx]
 
         N = len(sim_matrix)
         clusters = [[i] for i in range(N)]

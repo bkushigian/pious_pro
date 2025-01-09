@@ -70,38 +70,30 @@ class NodeMutator:
         if len(child_nodes) < 2:
             print("Skipping: need at least 2 actions")
         else:
-            if self.save:
-                file_name = osp.basename(self.cfr_file)
-                file_name_no_ext, _ = osp.splitext(file_name)
-                node_id_no_colon = spot.node.node_id.replace(":", "_")
-                out_dir = osp.join(
-                    "pp", "saved_deltas", file_name_no_ext, node_id_no_colon
-                )
-                os.makedirs(out_dir, exist_ok=True)
-                # write metadata
-                self.write_metadata(out_dir)
-                self.write_spotdata(out_dir, spot)
+            pos_idx = spot.node.get_position_idx()
+            hero_evs = spot.hand_evs(pos_idx)
+            villain_evs = spot.hand_evs(1 - pos_idx)
+            hero_range = spot.range(pos_idx).range_array
+            villain_range = spot.range(1 - pos_idx).range_array
+            strategy = spot.strategy()
+            nmd = NodeMutationData(
+                self.cfr_file,
+                node.node_id,
+                actions,
+                hero_evs,
+                villain_evs,
+                hero_range,
+                villain_range,
+                strategy,
+            )
             for child in child_nodes:
                 print("Child:", child)
                 deltas = self.compute_matchup_deltas(spot, child)
                 sim_matrix = self.compute_sim_matrix(deltas=deltas)
-                if self.save:
-                    child_dir = osp.join(out_dir, child.last_action)
-                    os.makedirs(child_dir, exist_ok=True)
-                    file_path = osp.join(
-                        child_dir,
-                        f"villain_deltas.pkl",
-                    )
-                    print(f"Saving deltas to {file_path}...")
-                    with open(file_path, "wb") as f:
-                        pickle.dump(deltas, f)
+                nmd.add_child_matchup_data(child.last_action, deltas, sim_matrix)
 
-                    file_path = osp.join(
-                        child_dir,
-                        f"villain_sim_matrix.pkl",
-                    )
-                    with open(file_path, "wb") as f:
-                        pickle.dump(sim_matrix, f)
+            if self.save:
+                nmd.pickle()
 
         self.solver = None
 
@@ -244,38 +236,48 @@ def compute_action_frequencies(spot: SpotData) -> Dict[str, np.float64]:
     return action_frequencies
 
 
-class HandGroups:
-    def __init__(self, spot: SpotData):
-        self.spot = spot
-        self.pos_idx = spot.node.get_position_idx()
-        self.evs = spot.hand_evs(self.pos_idx)
-        self.matchups = spot.matchups(self.pos_idx)
-        self.groups = [[i for i, m in enumerate(self.matchups) if m > 0]]
+class NodeMutationData:
+    """
+    This wraps data computed by NodeMutator for a spot
+    """
 
-    def observe_mutated_evs(self, mutated_evs):
-        print("Observing mutated evs")
-        new_groups = []
-        evs = self.evs
-        for group in self.groups:
-            ev_shift = [mutated_evs[idx] - evs[idx] for idx in group]
-            print(mutated_evs)
-            print(evs)
-            print(ev_shift)
-            # now, break up the group based on the EV shifts we observed.
-            # We want to "cluster" around these ev shifts. There will always be 3 centroids:
-            # 1. 0: EV didn't shift
-            # 2. x>0: hands gained EV
-            # 3. y<0: hands lost EV
-            clusters = compute_centroids_for_ev_shift(ev_shift)
-            print(clusters)
+    def __init__(
+        self,
+        cfr_file,
+        node_id,
+        actions,
+        hero_evs,
+        villain_evs,
+        hero_range,
+        villain_range,
+        strategy,
+    ):
+        # METADATA
+        self.cfr_file = cfr_file
+        self.node_id = node_id
 
+        # SPOT DATA
+        self.actions = actions
+        self.hero_evs = hero_evs
+        self.villain_evs = villain_evs
+        self.strategy = strategy
+        self.hero_range = hero_range
+        self.villain_range = villain_range
 
-def compute_centroids_for_ev_shift(ev_shift: List[Tuple[int, np.float64]]):
-    initial_centroids = np.array([[-1], [0], [1]])
-    data_reshaped = np.array(ev_shift).reshape(-1, 1)
-    kmeans = KMeans(n_clusters=3, init=initial_centroids, n_init=1, max_iter=100)
-    kmeans.fit(data_reshaped)
-    clusters = kmeans.predict(data_reshaped)
-    print("Clusters", clusters)
-    print("Centroids", kmeans.cluster_centers_)
-    return clusters
+        # MATCHUP DATA
+        self.child_matchup_data = []
+
+    def add_child_matchup_data(self, action, matchups, sim_matrix):
+        self.child_matchup_data.append((action, matchups, sim_matrix))
+
+    def pickle(self, out_dir=None):
+        if out_dir is None:
+            out_dir = osp.join("pp", "mutate")
+
+        file_name = osp.basename(self.cfr_file)
+        file_name_no_ext, _ = osp.splitext(file_name)
+        node_id_no_colon = self.node_id.replace(":", "_")
+        qualified_out_dir = osp.join(out_dir, file_name_no_ext)
+        os.makedirs(qualified_out_dir, exist_ok=True)
+        with open(osp.join(qualified_out_dir, f"{node_id_no_colon}.pkl"), "wb") as f:
+            pickle.dump(self, f)
