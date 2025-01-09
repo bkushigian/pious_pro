@@ -4,7 +4,7 @@ from ._executables.conf import ConfCliSubcommand
 from ._executables.aggregate import AggregateCliSubcommand
 from ._executables.mutate import MutateCliSubcommand
 from ._executables.visualize_mutate import VisualizeMutateCliSubcommand
-from ._executables.cluster_sim_matrix import ClusterSimMatrixCliSubcommand
+from ._executables.node_report import NodeReportCliSubcommand
 
 
 def main():
@@ -19,7 +19,7 @@ def main():
     AggregateCliSubcommand(sp)
     MutateCliSubcommand(sp)
     VisualizeMutateCliSubcommand(sp)
-    ClusterSimMatrixCliSubcommand(sp)
+    NodeReportCliSubcommand(sp)
 
     args = parser.parse_args()
     if "function" in args:

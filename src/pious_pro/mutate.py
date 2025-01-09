@@ -4,7 +4,6 @@ from pious.pio.aggregate import SpotData
 from pious.util import PIO_HAND_ORDER
 from pious.util import color_card
 import numpy as np
-from sklearn.cluster import KMeans
 from os import path as osp
 import os
 import pickle
@@ -16,7 +15,7 @@ def color_cards(c):
     c.replace(" ", "")
     result = []
     for i in range(0, len(c), 2):
-        result.append(color_card(c[i : i + 2]))
+        result.append(color_card(c[i : i + 2], plain_suit=True))
     return "".join(result)
 
 

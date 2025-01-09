@@ -9,15 +9,17 @@ from pious.util import color_card
 from ..mutate import NodeMutationData
 
 
+ACTION_FREQUENCY_THRESHOLD = 0.05
+
 def color_cards(cards):
-    return "".join([color_card(cards[i : i + 2]) for i in range(0, len(cards), 2)])
+    return "".join([color_card(cards[i : i + 2], plain_suit=True) for i in range(0, len(cards), 2)])
 
 
-class ClusterSimMatrixCliSubcommand(CliSubcommand):
+class NodeReportCliSubcommand(CliSubcommand):
     def __init__(self, sub_parsers: _SubParsersAction):
         super().__init__(
             sub_parsers,
-            "cluster_sim_matrix",
+            "node_report",
             "Cluster hand similarity data from the mutate command",
         )
         p = self.parser
@@ -73,7 +75,11 @@ class ClusterSimMatrixCliSubcommand(CliSubcommand):
     def run(self, args) -> int:
         with open(args.node_mutation_data, "rb") as f:
             nmd: NodeMutationData = pickle.load(f)
-        action = args.action
+        
+        self.summarize_node_for_action(nmd, args.action, args.threshold)
+
+    def summarize_node_for_action(self, nmd: NodeMutationData, action: str, threshold: float):
+        action = action
         if action is None:
             for a in nmd.actions:
                 if a.startswith("b"):
@@ -88,13 +94,30 @@ class ClusterSimMatrixCliSubcommand(CliSubcommand):
                     raise RuntimeError("Illegal action set")
 
         action_idx = nmd.actions.index(action)
+
         _, deltas, sim_matrix = nmd.child_matchup_data[action_idx]
+        action_freqs = nmd.strategy[action_idx]
+        # These are the pio hand order indices
+        action_hand_indices = [idx for (idx, freq) in enumerate(action_freqs) if freq >= 0.05 ]
+        pure_action_hand_indices = [idx for (idx, freq) in enumerate(action_freqs) if freq >= 1 - ACTION_FREQUENCY_THRESHOLD]
+        pure_no_action_hand_indices = [idx for (idx, freq) in enumerate(action_freqs) if freq <= ACTION_FREQUENCY_THRESHOLD]
+        mix_action_hand_indices = [idx for (idx, freq) in enumerate(action_freqs) if ACTION_FREQUENCY_THRESHOLD < freq < (1 - ACTION_FREQUENCY_THRESHOLD)]
+
+        # Now we want to translate them to our deltas indices
+        delta_hand_indices = []
+        for i , (hidx, _) in enumerate(deltas):
+            if hidx in action_hand_indices:
+                delta_hand_indices.append(i)
+
 
         N = len(sim_matrix)
+
         clusters = [[i] for i in range(N)]
+        clusters = [[i] for i in delta_hand_indices]
         n_clusters = len(clusters)
-        target_threshold = args.threshold
+        target_threshold = threshold
         threshold = 0.99
+        colored_board = " ".join([color_card(c) for c in nmd.board])
         while threshold >= target_threshold:
             threshold = max(target_threshold, threshold)
             n_combinations = self.combine_clusters_for_threshold(
@@ -109,17 +132,17 @@ class ClusterSimMatrixCliSubcommand(CliSubcommand):
             if len(clusters) < n_clusters:
                 n_clusters = len(clusters)
                 print(
-                    f"\n   === \033[1;34m{n_clusters}\033[0m CLUSTERS AFTER COMBINING FOR THRESHOLD {threshold: 5.3f} === \n"
+                    f"\n   === \033[1;34m{n_clusters}\033[0m CLUSTERS ON {colored_board} FOR AT \033[1m{nmd.node_id}\033[0m THRESHOLD {threshold: 5.3f} === \n"
                 )
                 print_clusters(deltas, clusters, width=10)
             threshold -= 0.01
 
 
 def print_clusters(deltas, clusters, width=10):
+    print()
     for i, clust in enumerate(clusters):
         hand_ids = [deltas[x][0] for x in clust]
         hand_strs = [PIO_HAND_ORDER[x] for x in hand_ids]
-        print()
         print(f"[\033[34mCLUSTER #{i}\033[0m]")
         for i in range(0, len(hand_strs), width):
             print(
