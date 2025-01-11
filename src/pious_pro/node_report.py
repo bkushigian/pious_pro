@@ -59,9 +59,12 @@ class NodeReport:
         with open(args.node_mutation_data, "rb") as f:
             nmd: NodeMutationData = pickle.load(f)
 
-        self.summarize_node_for_action(nmd, args.action, args.threshold)
+        self.combination_clustering_for_action(nmd, args.action, args.threshold)
 
-    def separate_clusters_for_action(
+    def summarize_node(self, nmd: NodeMutationData, action: str, threshold: float):
+        return self.separation_clustering_for_action(nmd, action, threshold)
+
+    def separation_clustering_for_action(
         self, nmd: NodeMutationData, action: str, threshold: float
     ):
         """
@@ -86,14 +89,44 @@ class NodeReport:
         hero_hand_indices, hero_deltas, hero_sim_matrix = hero_data
         villain_hand_indices, villain_deltas, villain_sim_matrix = villain_data
 
+        hero_range = nmd.hero_range
+        villain_range = nmd.villain_range
+
+        hero_range_condensed = hero_range[np.nonzero(hero_range)[0]]
+        villain_range_condensed = villain_range[np.nonzero(villain_range)[0]]
+
+        print("HERO DATA")
+        print(hero_hand_indices)
+        print(len(hero_hand_indices))
+        print(len(hero_deltas))
+        print(len(hero_deltas[0]))
+        print(len(hero_deltas[1]))
+        print(len(hero_sim_matrix))
+        print(hero_range_condensed)
+        print(len(hero_range_condensed))
+
+        print("VILLAIN DATA")
+        print(villain_hand_indices)
+        print(len(villain_hand_indices))
+        print(len(villain_deltas))
+        print(len(villain_deltas[1]))
+        print(len(villain_deltas[2]))
+        print(len(villain_sim_matrix))
+        print(villain_range_condensed)
+        print(len(villain_range_condensed))
+        exit()
+
         action_freqs = nmd.strategy[action_idx]
         # These are the pio hand order indices
         action_hand_indices = [
             idx for (idx, freq) in enumerate(action_freqs) if freq >= 0.05
         ]
-        hclusters = [[i for i in range(len(hero_sim_matrix))]]
-        vclusters = [[i for i in range(len(villain_sim_matrix))]]
 
+        hclusters = list(range(len(hero_hand_indices)))
+        vclusters = list(range(len(villain_hand_indices)))
+
+        # We define profiles to make it easy to index into them based on the
+        # current player (i.e., cluster = cluster_profile[pos])
         cluster_profile = [hclusters, vclusters]
         delta_profile = [hero_deltas, villain_deltas]
         sim_matrix_profile = [hero_sim_matrix, villain_sim_matrix]
@@ -103,13 +136,6 @@ class NodeReport:
         print("\n\n==================================\n\n")
         print(villain_sim_matrix)
         exit()
-        iteration_number = 0
-
-        def print_clusters_for_player(clusters, deltas):
-            for cn, nc in enumerate(clusters):
-                print("Cluster ", cn)
-                hands = [color_cards(PIO_HAND_ORDER[deltas[idx][0]]) for idx in nc]
-                print(" ".join(hands))
 
         iteration_number = 0
         changed = True
@@ -123,15 +149,16 @@ class NodeReport:
                 # We are currently splitting clusters cs1 based on cs2
                 this_player_clusters = cluster_profile[player_number]
                 # Deltas: one entry per hand of the shape [hidx, DELTA]
-                ds = delta_profile[player_number]
-                sm = sim_matrix_profile[player_number]
+                this_player_delta = delta_profile[player_number]
+                this_player_sim_matrix = sim_matrix_profile[player_number]
+                # Define a cluster sim matrix that averages the deltas across each
                 cs_idx = 0
                 while cs_idx < len(this_player_clusters):
                     cs = this_player_clusters[cs_idx]
-                    clust_sm = sm[np.ix_(cs, cs)]
+                    clust_sm = this_player_sim_matrix[np.ix_(cs, cs)]
                     # print("similarities", clust_sm)
                     distances = 1 - clust_sm
-                    print(sm)
+                    print(this_player_sim_matrix)
                     # print("distances", distances)
                     result = DBSCAN(min_samples=1, eps=threshold).fit_predict(distances)
                     n_clusters = max(result) + 1
@@ -149,7 +176,7 @@ class NodeReport:
                     print(
                         f"\n  \033[1;33m === {n_clusters} CLUSTERS ON {colored_board} \033[1;33mFOR AT \033[30;1m{nmd.node_id}\033[0m \033[1;33mTHRESHOLD {threshold: 5.3f} ===\033[0m \n"
                     )
-                    print_clusters(ds, new_clusters)
+                    print_clusters(this_player_delta, new_clusters)
                     if changed:
                         # First, remove original cluster
                         this_player_clusters.pop(cs_idx)
@@ -159,9 +186,13 @@ class NodeReport:
                     cs_idx += 1
                     exit(1)
 
-    def summarize_node_for_action(
+    def combination_clustering_for_action(
         self, nmd: NodeMutationData, action: str, threshold: float
     ):
+        """
+        This is a basic clustering approach, implemented as a proof of concept.
+        It works by combining similar hands.
+        """
         if action is None:
             for a in nmd.actions:
                 if a.startswith("b"):

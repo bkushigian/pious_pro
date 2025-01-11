@@ -34,4 +34,4 @@ class NodeReportCliSubcommand(CliSubcommand):
             nmd: NodeMutationData = pickle.load(f)
 
         nr = NodeReport()
-        nr.summarize_node_for_action(nmd, args.action, args.threshold)
+        nr.combination_clustering_for_action(nmd, args.action, args.threshold)
