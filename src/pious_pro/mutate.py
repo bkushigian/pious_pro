@@ -56,10 +56,12 @@ class NodeMutationData:
         self.villain_range = villain_range
 
         # MATCHUP DATA
-        self.child_matchup_data = []
+        self.child_matchup_data: List[
+            str, Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray]
+        ] = []
 
-    def add_child_deltas_data(self, action, deltas, sim_matrix):
-        self.child_matchup_data.append((action, deltas, sim_matrix))
+    def add_child_deltas_data(self, action, hero_data: Tuple, villain_data: Tuple):
+        self.child_matchup_data.append((action, hero_data, villain_data))
 
     def pickle(self, out_dir=None):
         if out_dir is None:
@@ -287,29 +289,38 @@ class NodeMutator:
             strategy,
         )
         for child in child_nodes:
-            deltas = self.compute_matchup_deltas(spot, child)
-            sim_matrix = self.compute_sim_matrix(deltas=deltas)
-            nmd.add_child_deltas_data(child.last_action, deltas, sim_matrix)
+            (hero_hand_indices, hero_deltas), (villain_hand_indices, villain_deltas) = (
+                self.compute_matchup_deltas(spot, child)
+            )
+
+            print("LEN", len(villain_deltas))
+            print(" ".join([PIO_HAND_ORDER[idx] for idx in villain_hand_indices]))
+            hero_sim_matrix = self.compute_sim_matrix(deltas=hero_deltas)
+            villain_sim_matrix = self.compute_sim_matrix(deltas=villain_deltas)
+
+            hero_data = (hero_hand_indices, hero_deltas, hero_sim_matrix)
+            villain_data = (villain_hand_indices, villain_deltas, villain_sim_matrix)
+            nmd.add_child_deltas_data(child.last_action, hero_data, villain_data)
 
         if self.save:
             nmd.pickle()
         return nmd
 
-    def compute_sim_matrix(self, deltas: List[Tuple[int, np.ndarray]]) -> np.ndarray:
+    def compute_sim_matrix(self, deltas: np.ndarray[np.ndarray]) -> np.ndarray:
         N = len(deltas)
         sim_matrix = np.zeros((N, N), dtype=np.float32)
         for i in range(N):
-            _, delta0 = deltas[i]
-            cleaned0 = np.nan_to_num(delta0, nan=0.0, posinf=0.0, neginf=0.0)
+            cleaned0 = np.nan_to_num(deltas[i], nan=0.0, posinf=0.0, neginf=0.0)
             for j in range(i, N):
-                _, delta1 = deltas[j]
-                cleaned1 = np.nan_to_num(delta1, nan=0.0, posinf=0.0, neginf=0.0)
+                cleaned1 = np.nan_to_num(deltas[j], nan=0.0, posinf=0.0, neginf=0.0)
                 sim_score = cosine_similarity(cleaned0, cleaned1)
                 sim_matrix[i][j] = sim_score
                 sim_matrix[j][i] = sim_score
         return sim_matrix
 
-    def compute_matchup_deltas(self, spot: SpotData, child: Node):
+    def compute_matchup_deltas(
+        self, spot: SpotData, child: Node
+    ) -> Tuple[List[int], np.ndarray]:
         """
         Compute EV deltas per matchup.
 
@@ -322,16 +333,22 @@ class NodeMutator:
         """
 
         child_spot = SpotData(self.solver, child)
-        pos_idx = spot.node.get_position_idx()
-        child_pos_idx = 1 - pos_idx  # 0 -> 1, 1 -> 0
-        child_pos = ["OOP", "IP"][child_pos_idx]
-        child_evs = child_spot.hand_evs(child_pos_idx)
+        hero_pos_idx = spot.node.get_position_idx()
+        villain_pos_idx = 1 - hero_pos_idx  # 0 -> 1, 1 -> 0
+        child_pos = ["OOP", "IP"][villain_pos_idx]
+        child_evs = child_spot.hand_evs(villain_pos_idx)
 
         orig_strat = spot.strategy()
         orig_strat = [freq for action_freqs in orig_strat for freq in action_freqs]
 
         new_strat = list(orig_strat)
-        rng = spot.range(spot.node.get_position_idx())
+
+        hero_range = spot.range(hero_pos_idx).range_array
+        villain_range = spot.range(villain_pos_idx).range_array
+
+        # We use range masks to only consider evs of hands in range
+        villain_hand_indices = np.nonzero(villain_range)[0]
+        child_evs = child_evs[villain_hand_indices]
 
         children = self.solver.show_children(spot.node)
         print(children)
@@ -342,7 +359,7 @@ class NodeMutator:
 
         N_HANDS = 1326
         # Set action_idx to 0
-        for hand_index, wt in enumerate(rng.range_array):
+        for hand_index, wt in enumerate(hero_range):
             if wt == 0:
                 continue
             from_idx = action_idx * N_HANDS + hand_index
@@ -352,11 +369,12 @@ class NodeMutator:
 
         # Now, for each hand with non-zero weight
 
-        deltas = []  # List of per-hand deltas
+        hero_hand_indices = []
+        hero_deltas = []  # List of per-hand deltas
         for hand_index, wt in tqdm.tqdm(
-            enumerate(rng.range_array),
+            enumerate(hero_range),
             desc="computing matchup evs",
-            total=len(rng.range_array),
+            total=len(hero_range),
         ):
             if wt == 0:
                 continue
@@ -373,8 +391,10 @@ class NodeMutator:
             self.solver.set_strategy(spot.node, new_strat)
             self.solver.calc_results()
             new_child_evs = self.solver.calc_ev(child_pos, child_spot.node)[0]
+            new_child_evs = new_child_evs[villain_hand_indices]
             deltas_for_hand = new_child_evs - child_evs
-            deltas.append((hand_index, deltas_for_hand))
+            hero_hand_indices.append(hand_index)
+            hero_deltas.append(deltas_for_hand)
 
             # Finally, reset `new_strat` to not take this action with this hand
             new_strat[to_idx] = 0
@@ -384,7 +404,8 @@ class NodeMutator:
         self.solver.set_strategy(spot.node, orig_strat)  # Ensure we reset everything
         self.solver.calc_results()
         print("DONE")
-        return deltas
+        villain_deltas = np.transpose(hero_deltas)
+        return (hero_hand_indices, hero_deltas), (villain_hand_indices, villain_deltas)
 
     def write_metadata(self, outdir):
         with open(osp.join(outdir, "metadata.json"), "w") as f:

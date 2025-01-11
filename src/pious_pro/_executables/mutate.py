@@ -23,7 +23,7 @@ class MutateCliSubcommand(CliSubcommand):
         )
 
     def run(self, args) -> int:
-        mutator = NodeMutator(args.cfr_file, args.node_id)
+        mutator = NodeMutator(cfr_file=args.cfr_file, node=args.node_id)
         if args.save:
             mutator.save = True
         try:
