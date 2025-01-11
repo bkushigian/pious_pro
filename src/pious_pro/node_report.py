@@ -27,6 +27,9 @@ class NodeReport:
         if ci == cj:
             return False
         sim_sum = 0
+        print('SIM_MATRIX SHAPE', sim_matrix.shape)
+        print("Len ci", len(ci))
+        print("Len cj", len(cj))
         for h1 in ci:
             for h2 in cj:
                 sim_sum += sim_matrix[h1][h2]
@@ -45,12 +48,6 @@ class NodeReport:
                 # print(f"Comparing {ci}@{i} and {cj}@{j}")
                 if self.can_combine_clusters(sim_matrix, ci, cj, threshold=threshold):
                     n_combinations += 1
-                    # print(f"Combining clusters {i}{ci} and {j}{cj}")
-                    # hands_in_ci = [PIO_HAND_ORDER[deltas[x][0]] for x in ci]
-                    # hands_in_cj = [PIO_HAND_ORDER[deltas[x][0]] for x in cj]
-                    # print(f"  {hands_in_ci}")
-                    # print(f"  {hands_in_cj}")
-
                     ci += cj
                     clusters.pop(j)
                 else:
@@ -85,9 +82,10 @@ class NodeReport:
                     raise RuntimeError("Illegal action set")
         action_idx = nmd.actions.index(action)
 
-        _, (hero_deltas, hero_sim_matrix), (villain_deltas, villain_sim_matrix) = (
-            nmd.child_matchup_data[action_idx]
-        )
+        _, hero_data, villain_data = nmd.child_matchup_data[action_idx]
+        hero_hand_indices, hero_deltas, hero_sim_matrix = hero_data
+        villain_hand_indices, villain_deltas, villain_sim_matrix = villain_data
+
         action_freqs = nmd.strategy[action_idx]
         # These are the pio hand order indices
         action_hand_indices = [
@@ -209,7 +207,7 @@ class NodeReport:
         N = len(hero_sims_matrix)
 
         clusters = [[i] for i in range(N)]
-        clusters = [[i] for i in hero_hand_indices]
+        # clusters = [[i] for i in hero_hand_indices]
         n_clusters = len(clusters)
         target_threshold = threshold
         threshold = 0.99
@@ -230,14 +228,14 @@ class NodeReport:
                 print(
                     f"\n  \033[1;34m === {n_clusters} CLUSTERS ON {colored_board} FOR AT \033[1m{nmd.node_id}\033[0m THRESHOLD {threshold: 5.3f} ===\033[0m \n"
                 )
-                print_clusters(hero_deltas, clusters, width=10)
+                print_clusters(hero_hand_indices, clusters, width=10)
             threshold -= 0.01
 
 
-def print_clusters(deltas, clusters, width=10):
+def print_clusters(hand_indices, clusters, width=10):
     print()
     for i, clust in enumerate(clusters):
-        hand_ids = [deltas[x][0] for x in clust]
+        hand_ids = [hand_indices[x] for x in clust]
         hand_strs = [PIO_HAND_ORDER[x] for x in hand_ids]
         print(f"[\033[1;33mCLUSTER #{i}\033[0m]")
         for i in range(0, len(hand_strs), width):
