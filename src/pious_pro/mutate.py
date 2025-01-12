@@ -24,6 +24,18 @@ def color_cards(c):
 def cosine_similarity(xs, ys):
     return np.dot(xs, ys) / (np.linalg.norm(xs) * np.linalg.norm(ys))
 
+def compute_sim_matrix(deltas: np.ndarray[np.ndarray]) -> np.ndarray:
+    N = len(deltas)
+    sim_matrix = np.zeros((N, N), dtype=np.float32)
+    for i in range(N):
+        cleaned0 = np.nan_to_num(deltas[i], nan=0.0, posinf=0.0, neginf=0.0)
+        for j in range(i, N):
+            cleaned1 = np.nan_to_num(deltas[j], nan=0.0, posinf=0.0, neginf=0.0)
+            sim_score = cosine_similarity(cleaned0, cleaned1)
+            sim_matrix[i][j] = sim_score
+            sim_matrix[j][i] = sim_score
+    return np.nan_to_num(sim_matrix, nan=0.0, posinf=0.0, neginf=0.0)
+
 
 class NodeMutationData:
     """
@@ -295,8 +307,8 @@ class NodeMutator:
 
             print("LEN", len(villain_deltas))
             print(" ".join([PIO_HAND_ORDER[idx] for idx in villain_hand_indices]))
-            hero_sim_matrix = self.compute_sim_matrix(deltas=hero_deltas)
-            villain_sim_matrix = self.compute_sim_matrix(deltas=villain_deltas)
+            hero_sim_matrix = compute_sim_matrix(deltas=hero_deltas)
+            villain_sim_matrix = compute_sim_matrix(deltas=villain_deltas)
 
             hero_data = (hero_hand_indices, hero_deltas, hero_sim_matrix)
             villain_data = (villain_hand_indices, villain_deltas, villain_sim_matrix)
@@ -305,18 +317,6 @@ class NodeMutator:
         if self.save:
             nmd.pickle()
         return nmd
-
-    def compute_sim_matrix(self, deltas: np.ndarray[np.ndarray]) -> np.ndarray:
-        N = len(deltas)
-        sim_matrix = np.zeros((N, N), dtype=np.float32)
-        for i in range(N):
-            cleaned0 = np.nan_to_num(deltas[i], nan=0.0, posinf=0.0, neginf=0.0)
-            for j in range(i, N):
-                cleaned1 = np.nan_to_num(deltas[j], nan=0.0, posinf=0.0, neginf=0.0)
-                sim_score = cosine_similarity(cleaned0, cleaned1)
-                sim_matrix[i][j] = sim_score
-                sim_matrix[j][i] = sim_score
-        return sim_matrix
 
     def compute_matchup_deltas(
         self, spot: SpotData, child: Node

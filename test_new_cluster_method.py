@@ -10,4 +10,4 @@ with open(path, "rb") as f:
 print(nmd)
 
 nr = NodeReport()
-nr.separation_clustering_for_action(nmd, "b168", 1.8)
+nr.separation_clustering_for_action(nmd, "b168", 5.1)
