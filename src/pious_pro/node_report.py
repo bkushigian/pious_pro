@@ -7,6 +7,7 @@ from pious.util import PIO_HAND_ORDER
 from pious.util import color_card
 from .mutate import NodeMutationData, cosine_similarity, compute_sim_matrix
 from sklearn.cluster import DBSCAN
+import copy
 
 
 ACTION_FREQUENCY_THRESHOLD = 0.05
@@ -14,6 +15,11 @@ ACTION_FREQUENCY_THRESHOLD = 0.05
 
 def color_cards(cards):
     return "".join([color_card(cards[i : i + 2]) for i in range(0, len(cards), 2)])
+
+
+class ClusteringIterationData:
+    def __init__():
+        pass
 
 
 class NodeReport:
@@ -27,7 +33,7 @@ class NodeReport:
         if ci == cj:
             return False
         sim_sum = 0
-        print('SIM_MATRIX SHAPE', sim_matrix.shape)
+        print("SIM_MATRIX SHAPE", sim_matrix.shape)
         print("Len ci", len(ci))
         print("Len cj", len(cj))
         for h1 in ci:
@@ -126,7 +132,7 @@ class NodeReport:
 
         # We define profiles to make it easy to index into them based on the
         # current player (i.e., cluster = cluster_profile[pos])
-        cluster_profile = [hclusters, vclusters]
+        cluster_profile = [copy.deepcopy(hclusters), copy.deepcopy(vclusters)]
         delta_profile = [hero_deltas, villain_deltas]
         sim_matrix_profile = [hero_sim_matrix, villain_sim_matrix]
         hand_indices_profile = [hero_hand_indices, villain_hand_indices]
@@ -134,23 +140,39 @@ class NodeReport:
 
         iteration_number = 0
         changed = True
+        clustering_history = {}
+        epochs = []
+        clustering_history["epochs"] = epochs
+        clustering_history["clusters"] = [hclusters, vclusters]
+        clustering_history["deltas"] = delta_profile
+        clustering_history["sim_matrices"] = sim_matrix_profile
+        clustering_history["hand_indices"] = hand_indices_profile
+        clustering_history["ranges"] = range_profile
+
         while changed:
+            epoch = {}  # Data for clustering history
+            epochs.append(epoch)
             iteration_number += 1
             changed = False
+            player_epoch_data = [{}, {}]
+            epoch["iteration"] = iteration_number
+            epoch["player_data"] = player_epoch_data
 
             for player_number in range(2):
+                this_player_epoch_data = player_epoch_data[player_number]
                 this_player_changed = False
                 print("ITERATION", iteration_number, " |  PLAYER", player_number)
+
                 # We are currently splitting clusters cs1 based on cs2
                 p1_clusters = cluster_profile[player_number]
                 p2_clusters = cluster_profile[1 - player_number]
 
+                this_player_epoch_data["clusters"] = p1_clusters
+
                 # Deltas: one entry per hand of the shape [hidx, DELTA]
                 p1_deltas = delta_profile[player_number]
-                p1_sim_matrix = sim_matrix_profile[player_number]
                 p1_hand_indices = hand_indices_profile[player_number]
 
-                p2_deltas = delta_profile[1 - player_number]
                 p2_hand_indices = hand_indices_profile[1 - player_number]
                 p2_range = range_profile[1 - player_number]
 
@@ -165,10 +187,10 @@ class NodeReport:
                     # the this cluster `cs` based on how it affects the other
                     # player's clusters.
                     #
-                    # To calculate we create a 
-                    # 
+                    # To calculate we create a
+                    #
                     #      |cluster_to_split| x # |p2_clusters|
-                    # 
+                    #
                     # matrix whose (i,j) entry is the mean change in EV of
                     # p2_clusters[j] when hand i is the only hand to bet.
 
@@ -179,23 +201,33 @@ class NodeReport:
                     # >>> cluster_deltas = [p2_deltas[idx] for idx cluster_hand_indices]
                     # >>> delta = np.dot(cluster_weights, cluster_deltas)
 
-                    cluster_to_split_hand_indices = [p1_hand_indices[i] for i in cluster_to_split]
-                    deltas = np.zeros((len(cluster_to_split), len(p2_clusters)), dtype=np.float64)
+                    cluster_to_split_hand_indices = [
+                        p1_hand_indices[i] for i in cluster_to_split
+                    ]
+                    deltas = np.zeros(
+                        (len(cluster_to_split), len(p2_clusters)), dtype=np.float64
+                    )
                     for cidx, hidx in enumerate(cluster_to_split_hand_indices):
                         for cjdx, c2 in enumerate(p2_clusters):
                             # Compute the average ev change experienced by c2
                             # from betting hidx. This is stored in p1's deltas
                             hand_deltas = np.array(p1_deltas[cidx])
                             c2_hand_indices = [p2_hand_indices[idx] for idx in c2]
-                            c2_weights = np.array([p2_range[idx] for idx in c2_hand_indices])
-                            c2_deltas = np.nan_to_num(np.array([hand_deltas[idx] for idx in c2]), nan=0.0, posinf=0.0, neginf=0.0)
+                            c2_weights = np.array(
+                                [p2_range[idx] for idx in c2_hand_indices]
+                            )
+                            c2_deltas = np.nan_to_num(
+                                np.array([hand_deltas[idx] for idx in c2]),
+                                nan=0.0,
+                                posinf=0.0,
+                                neginf=0.0,
+                            )
                             ev_shift = np.dot(c2_weights, c2_deltas)
                             deltas[cidx][cjdx] = ev_shift
 
                     clust_sm = compute_sim_matrix(deltas)
                     distances = 1 - clust_sm
                     result = DBSCAN(min_samples=1, eps=threshold).fit_predict(distances)
-                    print(result)
                     n_clusters = max(result) + 1
                     if n_clusters > 1:
                         changed = True
@@ -213,25 +245,28 @@ class NodeReport:
                         f"\n  \033[1;33m === {n_clusters} CLUSTERS ON {colored_board} \033[1;33mFOR AT \033[30;1m{nmd.node_id}\033[0m \033[1;33mTHRESHOLD {threshold: 5.3f} ===\033[0m \n"
                     )
                     if this_player_changed:
-                        print("\n\033[32;1m---- STARTING CLUSTER ----\033[0m")
-                        print_clusters(p1_hand_indices, p1_clusters, width=10)
+                        # print("\n\033[32;1m---- STARTING CLUSTER ----\033[0m")
+                        # print_clusters(p1_hand_indices, p1_clusters, width=10)
                         # First, remove original cluster
                         old_cluster_cell = p1_clusters.pop(cs_idx)
-                        print("\n\033[32;1m---- REMOVING OLD CLUSTER CELL ----\033[0m")
-                        print_clusters(p1_hand_indices, [old_cluster_cell])
-                        print("\n\033[32;1m---- INSERTING NEW CLUSTER CELLS ----\033[0m")
-                        print_clusters(p1_hand_indices, new_clusters)
+                        # print("\n\033[32;1m---- REMOVING OLD CLUSTER CELL ----\033[0m")
+                        # print_clusters(p1_hand_indices, [old_cluster_cell])
+                        # print(
+                        #     "\n\033[32;1m---- INSERTING NEW CLUSTER CELLS ----\033[0m"
+                        # )
+                        # print_clusters(p1_hand_indices, new_clusters)
                         for new_cluster_cell in new_clusters:
                             p1_clusters.insert(cs_idx, list(new_cluster_cell))
                             cs_idx += 1
                         cs_idx -= 1
-                        print("\n\033[32;1m---------------------------------\033[0m")
-                        print_clusters(p1_hand_indices, p1_clusters, width=10)
-                        input("...")
+                        # input("...")
+
                     cs_idx += 1
                 print("\033[32;1m---- FULL CLUSTER ----\033[0m")
                 print_clusters(p1_hand_indices, p1_clusters, width=10)
-                input(f"Finished Iteration {iteration_number} Player {player_number} cluster")
+                input(
+                    f"Finished Iteration {iteration_number} Player {player_number} cluster"
+                )
 
     def combination_clustering_for_action(
         self, nmd: NodeMutationData, action: str, threshold: float
