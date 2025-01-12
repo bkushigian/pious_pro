@@ -132,7 +132,9 @@ class NodeReport:
 
         # We define profiles to make it easy to index into them based on the
         # current player (i.e., cluster = cluster_profile[pos])
-        cluster_profile = [copy.deepcopy(hclusters), copy.deepcopy(vclusters)]
+
+        # NONE OF THESE SHOULD BE MUTATED
+        cluster_profile = [hclusters, vclusters]
         delta_profile = [hero_deltas, villain_deltas]
         sim_matrix_profile = [hero_sim_matrix, villain_sim_matrix]
         hand_indices_profile = [hero_hand_indices, villain_hand_indices]
@@ -143,20 +145,24 @@ class NodeReport:
         clustering_history = {}
         epochs = []
         clustering_history["epochs"] = epochs
-        clustering_history["clusters"] = [hclusters, vclusters]
+        clustering_history["clusters"] = cluster_profile
         clustering_history["deltas"] = delta_profile
         clustering_history["sim_matrices"] = sim_matrix_profile
         clustering_history["hand_indices"] = hand_indices_profile
         clustering_history["ranges"] = range_profile
 
+        current_cluster_profile = [copy.deepcopy(hclusters), copy.deepcopy(vclusters)]
         while changed:
             epoch = {}  # Data for clustering history
             epochs.append(epoch)
             iteration_number += 1
             changed = False
-            player_epoch_data = [{}, {}]
+
+            # SET UP EPOCH DATA
             epoch["iteration"] = iteration_number
+            player_epoch_data = [{}, {}]
             epoch["player_data"] = player_epoch_data
+            epoch["starting_clusters"] = copy.deepcopy(current_cluster_profile)
 
             for player_number in range(2):
                 this_player_epoch_data = player_epoch_data[player_number]
@@ -164,10 +170,8 @@ class NodeReport:
                 print("ITERATION", iteration_number, " |  PLAYER", player_number)
 
                 # We are currently splitting clusters cs1 based on cs2
-                p1_clusters = cluster_profile[player_number]
-                p2_clusters = cluster_profile[1 - player_number]
-
-                this_player_epoch_data["clusters"] = p1_clusters
+                p1_clusters = current_cluster_profile[player_number]
+                p2_clusters = current_cluster_profile[1 - player_number]
 
                 # Deltas: one entry per hand of the shape [hidx, DELTA]
                 p1_deltas = delta_profile[player_number]
@@ -176,31 +180,14 @@ class NodeReport:
                 p2_hand_indices = hand_indices_profile[1 - player_number]
                 p2_range = range_profile[1 - player_number]
 
+                # Compute cluster deltas and sim matrices
+                hand_v_cluster_deltas = []
+                per_cluster_sim_matrices = []
+                per_cluster_distances = []
+
+
                 cs_idx = 0
-                while cs_idx < len(p1_clusters):
-                    cluster_to_split = p1_clusters[cs_idx]
-                    # We want to define a new sim matrix. The normal sim matrix
-                    # shows similarities of hands based on how they affect
-                    # villain's range, hand by hand.
-                    #
-                    # Instead, we want to show the similarity of each hand in
-                    # the this cluster `cs` based on how it affects the other
-                    # player's clusters.
-                    #
-                    # To calculate we create a
-                    #
-                    #      |cluster_to_split| x # |p2_clusters|
-                    #
-                    # matrix whose (i,j) entry is the mean change in EV of
-                    # p2_clusters[j] when hand i is the only hand to bet.
-
-                    # We calculate entry (i,j) as the weighted average of each
-                    # hand in p2_cluster[j] and that hand's ev deltas:
-                    # >>> cluster_hand_indices =[p2_hand_indices[idx] for idx in p2_cluster[j]]
-                    # >>> cluster_weights = [p2_range[idx] for idx in cluster_hand_indices]
-                    # >>> cluster_deltas = [p2_deltas[idx] for idx cluster_hand_indices]
-                    # >>> delta = np.dot(cluster_weights, cluster_deltas)
-
+                for cluster_to_split in p1_clusters:
                     cluster_to_split_hand_indices = [
                         p1_hand_indices[i] for i in cluster_to_split
                     ]
@@ -227,6 +214,39 @@ class NodeReport:
 
                     clust_sm = compute_sim_matrix(deltas)
                     distances = 1 - clust_sm
+                    hand_v_cluster_deltas.append(deltas)
+                    per_cluster_sim_matrices.append(clust_sm)
+                    per_cluster_distances.append(distances)
+
+                this_player_epoch_data["cluster_deltas"] = hand_v_cluster_deltas
+                this_player_epoch_data["sim_matrices"] = per_cluster_sim_matrices
+                this_player_epoch_data["distances"] = per_cluster_distances
+
+
+                while cs_idx < len(p1_clusters):
+                    cluster_to_split = p1_clusters[cs_idx]
+                    # We want to define a new sim matrix. The normal sim matrix
+                    # shows similarities of hands based on how they affect
+                    # villain's range, hand by hand.
+                    #
+                    # Instead, we want to show the similarity of each hand in
+                    # the this cluster `cs` based on how it affects the other
+                    # player's clusters.
+                    #
+                    # To calculate we create a
+                    #
+                    #      |cluster_to_split| x # |p2_clusters|
+                    #
+                    # matrix whose (i,j) entry is the mean change in EV of
+                    # p2_clusters[j] when hand i is the only hand to bet.
+
+                    # We calculate entry (i,j) as the weighted average of each
+                    # hand in p2_cluster[j] and that hand's ev deltas:
+                    # >>> cluster_hand_indices =[p2_hand_indices[idx] for idx in p2_cluster[j]]
+                    # >>> cluster_weights = [p2_range[idx] for idx in cluster_hand_indices]
+                    # >>> cluster_deltas = [p2_deltas[idx] for idx cluster_hand_indices]
+                    # >>> delta = np.dot(cluster_weights, cluster_deltas)
+
                     result = DBSCAN(min_samples=1, eps=threshold).fit_predict(distances)
                     n_clusters = max(result) + 1
                     if n_clusters > 1:
@@ -267,6 +287,7 @@ class NodeReport:
                 input(
                     f"Finished Iteration {iteration_number} Player {player_number} cluster"
                 )
+            epoch["ending_clusters"] = copy.deepcopy(current_cluster_profile)
 
     def combination_clustering_for_action(
         self, nmd: NodeMutationData, action: str, threshold: float
