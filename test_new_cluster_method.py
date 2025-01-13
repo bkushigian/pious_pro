@@ -1,5 +1,5 @@
 from pious_pro.mutate import NodeMutator, NodeMutationData, TreeNode
-from pious_pro.node_report import NodeReport, print_epoch_summary
+from pious_pro.node_report.node_report import NodeReport, print_epoch_summary
 import numpy as np
 from os import path as osp
 import pickle

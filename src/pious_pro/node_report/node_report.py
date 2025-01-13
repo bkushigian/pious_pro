@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pious.util import PIO_HAND_ORDER
 from pious.util import color_card
-from .mutate import NodeMutationData, cosine_similarity, compute_sim_matrix
+from ..mutate import NodeMutationData, cosine_similarity, compute_sim_matrix
 from sklearn.cluster import DBSCAN
 import copy
 
@@ -33,9 +33,6 @@ class NodeReport:
         if ci == cj:
             return False
         sim_sum = 0
-        print("SIM_MATRIX SHAPE", sim_matrix.shape)
-        print("Len ci", len(ci))
-        print("Len cj", len(cj))
         for h1 in ci:
             for h2 in cj:
                 sim_sum += sim_matrix[h1][h2]

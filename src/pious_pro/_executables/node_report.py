@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from pious.util import PIO_HAND_ORDER
 from pious.util import color_card
 from ..mutate import NodeMutationData
-from ..node_report import NodeReport
+from ..node_report.node_report import NodeReport
 
 
 class NodeReportCliSubcommand(CliSubcommand):
