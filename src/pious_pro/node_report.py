@@ -171,7 +171,6 @@ class NodeReport:
                 # modifying. Thus p1 will be hero, then villain (or vice versa)
                 p1_epoch_data = player_epoch_data[player_number]
                 p1_changed = False
-                print("ITERATION", iteration_number, " |  PLAYER", player_number)
 
                 # We are currently splitting clusters cs1 based on cs2
                 p1_clusters = current_cluster_profile[player_number]
@@ -229,7 +228,6 @@ class NodeReport:
                 cs_idx = 0
                 new_p1_clusters = []
                 while cs_idx < len(p1_clusters):
-                    print(cs_idx)
                     distances = per_cluster_distances[cs_idx]
                     clust_sm = per_cluster_sim_matrices[cs_idx]
                     deltas = hand_v_cluster_deltas[cs_idx]
@@ -272,17 +270,23 @@ class NodeReport:
                     total_hands_in_old_cluster = len(cluster_to_split)
 
                     colored_board = " ".join([color_cards(c) for c in nmd.board])
-                    # print(
-                    #     f"\033[1;33m ITERATION {iteration_number} | PLAYER {player_number}\033[0m"
-                    # )
-                    # print(
-                    #     f"\n  \033[1;33m === {n_clusters} CLUSTERS ON {colored_board} \033[1;33mFOR AT \033[30;1m{nmd.node_id}\033[0m \033[1;33mTHRESHOLD {threshold: 5.3f} ===\033[0m \n"
-                    # )
                     new_p1_clusters += new_subclusters
                     cs_idx += 1
+                print(
+                    "Split",
+                    len(p1_clusters),
+                    "clusters into ",
+                    len(new_p1_clusters),
+                    "clusters",
+                )
                 new_cluster_profile.append(new_p1_clusters)
-                print("\033[32;1m---- FULL CLUSTER ----\033[0m")
-                print_clusters(p1_hand_indices, p1_clusters, width=10)
+                print(
+                    f"\033[1;33m ITERATION {iteration_number} | PLAYER {player_number}\033[0m"
+                )
+                print(
+                    f"\n  \033[1;33m === {n_clusters} CLUSTERS ON {colored_board} \033[1;33mFOR AT \033[30;1m{nmd.node_id}\033[0m \033[1;33mTHRESHOLD {threshold: 5.3f} ===\033[0m \n"
+                )
+                print_clusters(p1_hand_indices, new_p1_clusters, width=10)
                 # input(
                 #     f"Finished Iteration {iteration_number} Player {player_number} cluster"
                 # )
@@ -380,3 +384,29 @@ def print_clusters(hand_indices, clusters, width=10):
                 "    ",
                 " ".join([color_cards(hands) for hands in hand_strs[i : i + width]]),
             )
+
+
+def print_epoch_summary(clustering_history, epoch_number, player):
+    epochs = clustering_history["epochs"]
+    epoch = epochs[epoch_number]
+    iteration = epoch["iteration"]
+    cs0 = epoch["starting_clusters"][player]
+    cs1 = epoch["ending_clusters"][player]
+    cluster_mapping = [[] for _ in cs0]
+    i = -1
+    for c0, c0_mapping in zip(cs0, cluster_mapping):
+        l0 = len(c0)
+        l1 = 0
+        while l1 < l0 and i + 1 < len(cs1):
+            i += 1
+            c1 = cs1[i]
+            l1 += len(c1)
+            c0_mapping.append(i)
+        if len(c0_mapping) > 1:
+            print("---------")
+            hand_indices = clustering_history["hand_indices"][player]
+            print_clusters(hand_indices, [c0])
+            print("SPLIT INTO")
+            print_clusters(hand_indices, [cs1[c1] for c1 in c0_mapping])
+
+    pass

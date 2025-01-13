@@ -22,7 +22,11 @@ def color_cards(c):
 
 
 def cosine_similarity(xs, ys):
-    return np.dot(xs, ys) / (np.linalg.norm(xs) * np.linalg.norm(ys))
+    denom = np.linalg.norm(xs) * np.linalg.norm(ys)
+    if denom == 0.0:
+        return 0.0
+    return np.dot(xs, ys) / denom
+
 
 def compute_sim_matrix(deltas: np.ndarray[np.ndarray]) -> np.ndarray:
     N = len(deltas)
